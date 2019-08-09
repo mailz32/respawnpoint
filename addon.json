@@ -1,0 +1,10 @@
+{
+	"title"	:	"Respawn Point",
+	"type"	:	"tool",
+	"ignore"	:
+	[
+		".git*",
+		"LICENSE",
+		"README.md"
+	]
+}
