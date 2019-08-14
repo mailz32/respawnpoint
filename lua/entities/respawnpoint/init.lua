@@ -24,13 +24,9 @@ function ENT:Initialize()
     end
 
     -- Logic
-    self:UnassignPlayer()
-    self:Discharge()
-
-    -- Damage
     self.HP = RespawnPoint.MaxHP
-    self.spark_next = CurTime()
-    self.battery_fed = NULL
+    self.spark_next = 0
+    self:Discharge()
 end
 
 -- Overrided just to assign SENT to player who spawned it
@@ -58,7 +54,7 @@ function ENT:PhysicsCollide(data)
         and hitent:GetClass() == "item_battery"
         and self.HP < RespawnPoint.MaxHP
     then
-        self:ConsumeBattery(hitent)
+        self.battery_fed = ent_battery
         return -- Do not emit impact sound
     end
 
@@ -94,6 +90,12 @@ function ENT:Think()
     -- Check for battery fed
     self:ConsumeBattery()
 
+    -- Play teleporting effect if needed
+    if self.play_teleporting_effect then
+        self:TeleportingEffect()
+        self.play_teleporting_effect = false
+    end
+
     -- Emit sparks at low HP
     if self.HP <= RespawnPoint.LowHP and self.spark_next < curtime then
         self.spark_next = curtime + math.random(4, 12)
@@ -110,25 +112,30 @@ function ENT:MovePlayer(ply)
     if self.charged then
         local pos = self:GetPos()
         -- Move player
-        ply:SetPos(pos + Vector(0,0,self:BoundingRadius()))
+        ply:SetPos(pos + Vector(0, 0, 20))
 
-        -- Add effect to device
-        local effectdata = EffectData()
-        effectdata:SetOrigin(pos)
-        util.Effect("VortDispel", effectdata, true, true)
-
-        -- Add teleporting sound
-        self:EmitSound(table.Random(RespawnPoint.TeleportSounds), 80, 150)
-
+        -- Teleporting effect is applied in next Think to ensure that
+        -- player enters in teleporting sound range in multiplayer
+        self.play_teleporting_effect = true
         self:Discharge()
     else
-        --ply:PrintMessage(HUD_PRINTCENTER, "Respawn point is discharged")
+        ply:PrintMessage(HUD_PRINTCENTER, "Respawn Point not yet charged")
     end
+end
+
+function ENT:TeleportingEffect()
+        -- Add effect to device
+        local effectdata = EffectData()
+        effectdata:SetOrigin(self:LocalToWorld(Vector(0, 0, 20)))
+        util.Effect("VortDispel", effectdata, true, true)
+
+        -- Play teleporting sound
+        self:EmitSound(Sound(table.Random(RespawnPoint.TeleportSounds)), 85, 150)
 end
 
 function ENT:Recharge()
     self.charged = true
-    self:EmitSound("buttons/combine_button3.wav", 60, 100)
+    self:EmitSound(Sound("buttons/combine_button3.wav"), 75, 100)
 
     self:UpdateIndicator()
 end
@@ -147,28 +154,22 @@ function ENT:Spark()
     local effectdata = EffectData()
     effectdata:SetOrigin(self:GetPos())
     effectdata:SetMagnitude(4)
-    --effectdata:SetRadius(1)
+    effectdata:SetRadius(2)
     util.Effect("ElectricSpark", effectdata)
 
     -- Apply spark sound
-    self:EmitSound(table.Random(RespawnPoint.SparkSounds), 60, 150)
+    self:EmitSound(Sound(table.Random(RespawnPoint.SparkSounds)), 75, 150)
 end
 
 -- Restore device health with suit battery by 40 HP
---  This is called in PhysicsCollide with battery entity argument and
---  in Think without arguments. Removing battery in PhysicsCollide
---  results in warning about crash possibility
 function ENT:ConsumeBattery(ent_battery)
     -- Remove battery and add HP if it's present
     local bat = self.battery_fed
 
-    if IsValid(ent_battery) then
-        self.battery_fed = ent_battery
-
-    elseif IsValid(bat) then
+    if IsValid(bat) then
         local max_HP = RespawnPoint.MaxHP
         self.HP = self.HP + math.min(max_HP - self.HP, 40)
-        self:EmitSound("items/battery_pickup.wav", 75, 125)
+        self:EmitSound(Sound("items/battery_pickup.wav"), 75, 125)
 
         bat:Remove()
     end
@@ -179,8 +180,11 @@ function ENT:Explode()
     local effectdata = EffectData()
     local pos = self:GetPos()
     effectdata:SetOrigin(pos)
-    util.Effect("cball_explode", effectdata)
-    self:EmitSound(table.Random(RespawnPoint.ExplodeSounds), 80, 150)
+    effectdata:SetMagnitude(6)
+    effectdata:SetScale(2)
+    effectdata:SetRadius(4)
+    util.Effect("ElectricSpark", effectdata)
+    self:EmitSound(Sound(table.Random(RespawnPoint.ExplodeSounds)), 75, 150)
     self:Remove()
 end
 
@@ -195,6 +199,9 @@ function ENT:AssignPlayer(ply)
 
     ply.RespawnPoint = self
     self.AssignedPlayer = ply
+
+    self:EmitSound(Sound("buttons/combine_button5.wav"), 65, 100, 0.75)
+
     self:UpdateLabel()
     self:UpdateIndicator()
 end
@@ -206,6 +213,9 @@ function ENT:UnassignPlayer()
     end
 
     self.AssignedPlayer = NULL
+
+    self:EmitSound(Sound("buttons/combine_button7.wav"), 65, 100, 0.75)
+
     self:UpdateLabel()
     self:UpdateIndicator()
 end
