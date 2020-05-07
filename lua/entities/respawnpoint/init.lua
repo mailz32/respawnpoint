@@ -6,6 +6,7 @@ DEFINE_BASECLASS("base_gmodentity")
 
 RespawnPoint = RespawnPoint or {}
 
+
 --[[                Overrides                   ]]
 
 function ENT:Initialize()
@@ -25,8 +26,10 @@ function ENT:Initialize()
 
     -- Logic
     self.HP = RespawnPoint.MaxHP
-    self.spark_next = 0
+    self.spark_timer = 0
     self:Discharge()
+    self:UpdateLabel()
+    self:UpdateIndicator()
 end
 
 -- Overrided just to assign SENT to player who spawned it
@@ -46,19 +49,19 @@ function ENT:PostEntityPaste(ply)
     self:Discharge()
 end
 
--- Emit impact sound on collide and consume attached battery cell
+-- Emit impact sound on collide or consume suit battery
 function ENT:PhysicsCollide(data)
-    -- Restore device health with suit battery by 40 HP
-    local hitent = data.HitObject:GetEntity()
-    if IsValid(hitent)
-        and hitent:GetClass() == "item_battery"
-        and self.HP < RespawnPoint.MaxHP
+    local hitent = data.HitEntity
+
+    if IsValid(hitent) and
+       hitent:GetClass() == "item_battery" and
+       self.HP < RespawnPoint.MaxHP
     then
-        self.battery_fed = ent_battery
+        self.battery_fed = hitent
         return -- Do not emit impact sound
     end
 
-	if data.DeltaTime > 0.2 then
+    if data.DeltaTime > 0.2 then
         self:EmitSound(Sound("SolidMetal.ImpactSoft"))
     end
 
@@ -83,22 +86,24 @@ function ENT:Think()
     local curtime = CurTime()
 
     -- Check recharge timer
-    if not self.charged and self.charge_ETA < curtime then
+    if not self.charged and self.charge_timer < curtime then
         self:Recharge()
     end
 
     -- Check for battery fed
-    self:ConsumeBattery()
+    if IsValid(self.battery_fed) then
+        self:ConsumeBattery(self.battery_fed)
+    end
 
     -- Play teleporting effect if needed
-    if self.play_teleporting_effect then
+    if self.should_play_tp_effect then
         self:TeleportingEffect()
-        self.play_teleporting_effect = false
+        self.should_play_tp_effect = false
     end
 
     -- Emit sparks at low HP
-    if self.HP <= RespawnPoint.LowHP and self.spark_next < curtime then
-        self.spark_next = curtime + math.random(4, 12)
+    if self.HP <= RespawnPoint.LowHP and self.spark_timer < curtime then
+        self.spark_timer = curtime + math.random(4, 12)
         self:Spark()
     end
 
@@ -115,8 +120,9 @@ function ENT:MovePlayer(ply)
         ply:SetPos(pos + Vector(0, 0, 20))
 
         -- Teleporting effect is applied in next Think to ensure that
-        -- player enters in teleporting sound range in multiplayer
-        self.play_teleporting_effect = true
+        -- player enters in sound play range
+        self.should_play_tp_effect = true
+
         self:Discharge()
     else
         ply:PrintMessage(HUD_PRINTCENTER, "Respawn Point not yet charged")
@@ -124,12 +130,12 @@ function ENT:MovePlayer(ply)
 end
 
 function ENT:TeleportingEffect()
-        -- Add effect to device
+        -- Add visual effect
         local effectdata = EffectData()
         effectdata:SetOrigin(self:LocalToWorld(Vector(0, 0, 20)))
         util.Effect("VortDispel", effectdata, true, true)
 
-        -- Play teleporting sound
+        -- Play sound
         self:EmitSound(Sound(table.Random(RespawnPoint.TeleportSounds)), 85, 150)
 end
 
@@ -141,50 +147,46 @@ function ENT:Recharge()
 end
 
 function ENT:Discharge()
-    -- Reset timer
     self.charged = false
-    self.charge_ETA = CurTime() + RespawnPoint.RechargeTime
+    self.charge_timer = CurTime() + RespawnPoint.RechargeTime
 
-    -- Update indicator
     self:UpdateIndicator()
 end
 
+-- Restore device health with suit battery by up to 40 points
+function ENT:ConsumeBattery(bat)
+    local max_HP = RespawnPoint.MaxHP
+
+    self.HP = self.HP + math.min(max_HP - self.HP, 40)
+    self:EmitSound(Sound("items/battery_pickup.wav"), 75, 125)
+
+    bat:Remove()
+end
+
 function ENT:Spark()
-    -- Apply spark effect
+    -- Add spark effect
     local effectdata = EffectData()
     effectdata:SetOrigin(self:GetPos())
     effectdata:SetMagnitude(4)
     effectdata:SetRadius(2)
     util.Effect("ElectricSpark", effectdata)
 
-    -- Apply spark sound
+    -- Play sound
     self:EmitSound(Sound(table.Random(RespawnPoint.SparkSounds)), 75, 150)
 end
 
--- Restore device health with suit battery by 40 HP
-function ENT:ConsumeBattery(ent_battery)
-    -- Remove battery and add HP if it's present
-    local bat = self.battery_fed
-
-    if IsValid(bat) then
-        local max_HP = RespawnPoint.MaxHP
-        self.HP = self.HP + math.min(max_HP - self.HP, 40)
-        self:EmitSound(Sound("items/battery_pickup.wav"), 75, 125)
-
-        bat:Remove()
-    end
-
-end
-
 function ENT:Explode()
+    -- Add spark effect
     local effectdata = EffectData()
-    local pos = self:GetPos()
-    effectdata:SetOrigin(pos)
+    effectdata:SetOrigin(self:GetPos())
     effectdata:SetMagnitude(6)
-    effectdata:SetScale(2)
     effectdata:SetRadius(4)
+    effectdata:SetScale(2)
     util.Effect("ElectricSpark", effectdata)
+
+    -- Play sound
     self:EmitSound(Sound(table.Random(RespawnPoint.ExplodeSounds)), 75, 150)
+
     self:Remove()
 end
 
@@ -192,7 +194,7 @@ function ENT:AssignPlayer(ply)
     -- Don't overwrite assigned player
     if IsValid(self.AssignedPlayer) then return end
 
-    -- Unassign from previous R.P.
+    -- Unassign from previous RespawnPoint
     if IsValid(ply.RespawnPoint) then
         ply.RespawnPoint:UnassignPlayer()
     end

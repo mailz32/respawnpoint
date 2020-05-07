@@ -8,4 +8,4 @@ function RespawnPoint.Respawn(ply)
     end
 end
 
-hook.Add("PlayerSpawn", "RespawnPoint", function(ply) RespawnPoint.Respawn(ply) end)
+hook.Add("PlayerSpawn", "RespawnPoint", RespawnPoint.Respawn)

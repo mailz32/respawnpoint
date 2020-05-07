@@ -9,7 +9,7 @@ ENT.Contact         = "Steam"
 ENT.Purpose         = "Allow players set their custom spawn points"
 ENT.Instructions    = "Spawn and press 'E' to register your spawnpoint. After respawning device will be deactivated for 60s. Avoid device damage."
 
---[[    Shared values (just to keep all in one place)   ]]
+--[[    Shared values (all in one place)   ]]
 RespawnPoint = RespawnPoint or {}
 
 -- Constants
@@ -17,7 +17,7 @@ RespawnPoint.RechargeTime   = 60 -- seconds
 RespawnPoint.MaxHP          = 80
 RespawnPoint.LowHP          = 25
 
--- Enums
+-- State
 RespawnPoint.DISCHARGED     = 0
 RespawnPoint.CHARGED        = 1
 RespawnPoint.UNASSIGNED     = 2
@@ -46,9 +46,9 @@ RespawnPoint.ExplodeSounds = {
     "ambient/levels/labs/electric_explosion5.wav",
 }
 
--- (Indicator) color tables
+-- (Indicator) colors table
 RespawnPoint.IndicatorColor = {}
-RespawnPoint.IndicatorColor[RespawnPoint.UNASSIGNED] = Color(127, 127, 127)
-RespawnPoint.IndicatorColor[RespawnPoint.DISCHARGED] = Color(255, 192, 0)
-RespawnPoint.IndicatorColor[RespawnPoint.CHARGED] = Color(0, 63, 255)
+RespawnPoint.IndicatorColor[RespawnPoint.UNASSIGNED] = Color(127, 127, 127, 127)
+RespawnPoint.IndicatorColor[RespawnPoint.DISCHARGED] = Color(255, 192, 0, 127)
+RespawnPoint.IndicatorColor[RespawnPoint.CHARGED] = Color(0, 63, 255, 127)
 
