@@ -1,10 +1,8 @@
 AddCSLuaFile("cl_init.lua")
 AddCSLuaFile("shared.lua")
+resource.AddSingleFile("materials/entities/respawnpoint.png")
 
 include("shared.lua")
-DEFINE_BASECLASS("base_gmodentity")
-
-RespawnPoint = RespawnPoint or {}
 
 
 --[[                Overrides                   ]]
@@ -26,51 +24,44 @@ function ENT:Initialize()
 
     -- Logic
     self.HP = RespawnPoint.MaxHP
+    self.play_teleportation_effect = false
     self.spark_timer = 0
     self:Discharge()
     self:UpdateLabel()
-    self:UpdateIndicator()
 end
 
--- Overrided just to assign SENT to player who spawned it
-function ENT:SpawnFunction(ply, tr, ClassName)
-    local ent = BaseClass.SpawnFunction(self, ply, tr, ClassName)
-    ent:SetPlayer(ply)
-    return ent
+-- Unassign on duped entities
+function ENT:PostEntityPaste()
+    self.AssignedPlayer = NULL
 end
 
--- Unbind duplicated spawnpoint from previous owner
-function ENT:OnEntityCopyTableFinish(entdata)
-    entdata.AssignedPlayer = NULL
-end
-
-function ENT:PostEntityPaste(ply)
-    self:SetPlayer(ply)
-    self:Discharge()
-end
-
--- Emit impact sound on collide or consume suit battery
+-- Consume suit battery
 function ENT:PhysicsCollide(data)
     local hitent = data.HitEntity
 
-    if IsValid(hitent) and
-       hitent:GetClass() == "item_battery" and
-       self.HP < RespawnPoint.MaxHP
+    if IsValid(hitent) and hitent:GetClass() == "item_battery" and self.HP < RespawnPoint.MaxHP
     then
-        self.battery_fed = hitent
-        return -- Do not emit impact sound
+        self.HP = self.HP + math.min(RespawnPoint.MaxHP - self.HP, 40)
+        self:EmitSound(Sound("items/battery_pickup.wav"), 75, 125)
+        hitent:Remove()
     end
-
-    if data.DeltaTime > 0.2 then
-        self:EmitSound(Sound("SolidMetal.ImpactSoft"))
-    end
-
 end
 
 function ENT:OnTakeDamage(dmginfo)
     self.HP = self.HP - dmginfo:GetDamage()
     if self.HP <= 0 then
-        self:Explode()
+        -- Play (large) spark effect
+        local effectdata = EffectData()
+        effectdata:SetOrigin(self:GetPos())
+        effectdata:SetMagnitude(6)
+        effectdata:SetRadius(4)
+        effectdata:SetScale(2)
+        util.Effect("ElectricSpark", effectdata)
+
+        -- Play explode sound
+        self:EmitSound(Sound(table.Random(RespawnPoint.ExplodeSounds)), 75, 150)
+
+        self:Remove()
     end
 
     self:TakePhysicsDamage(dmginfo)
@@ -86,28 +77,36 @@ function ENT:Think()
     local curtime = CurTime()
 
     -- Check recharge timer
-    if not self.charged and self.charge_timer < curtime then
+    if IsValid(self.AssignedPlayer) and not self.charged and self.charge_timer < curtime then
         self:Recharge()
     end
 
-    -- Check for battery fed
-    if IsValid(self.battery_fed) then
-        self:ConsumeBattery(self.battery_fed)
-    end
-
-    -- Play teleporting effect if needed
-    if self.should_play_tp_effect then
-        self:TeleportingEffect()
-        self.should_play_tp_effect = false
-    end
-
-    -- Emit sparks at low HP
+    -- Periodically emit sparks at low HP
     if self.HP <= RespawnPoint.LowHP and self.spark_timer < curtime then
         self.spark_timer = curtime + math.random(4, 12)
-        self:Spark()
+        -- Play spark effect
+        local effectdata = EffectData()
+        effectdata:SetOrigin(self:GetPos())
+        effectdata:SetMagnitude(4)
+        effectdata:SetRadius(2)
+        util.Effect("ElectricSpark", effectdata)
+
+        -- Play sound
+        self:EmitSound(Sound(table.Random(RespawnPoint.SparkSounds)), 75, 150)
     end
 
-    BaseClass.Think(self)
+    -- Play delayed teleportation effect
+    if self.play_teleportation_effect then
+        -- Play teleport effect
+        local effectdata = EffectData()
+        effectdata:SetOrigin(self:LocalToWorld(Vector(0, 0, 20)))
+        util.Effect("VortDispel", effectdata, true, true)
+
+        -- Play sound
+        self:EmitSound(Sound(table.Random(RespawnPoint.TeleportSounds)), 85, 150)
+
+        self.play_teleportation_effect = false
+    end
 end
 
 
@@ -119,24 +118,14 @@ function ENT:MovePlayer(ply)
         -- Move player
         ply:SetPos(pos + Vector(0, 0, 20))
 
-        -- Teleporting effect is applied in next Think to ensure that
+        -- Teleportation effect is applied in next Think to ensure that
         -- player enters in sound play range
-        self.should_play_tp_effect = true
+        self.play_teleportation_effect = true
 
         self:Discharge()
     else
         ply:PrintMessage(HUD_PRINTCENTER, "Respawn Point not yet charged")
     end
-end
-
-function ENT:TeleportingEffect()
-        -- Add visual effect
-        local effectdata = EffectData()
-        effectdata:SetOrigin(self:LocalToWorld(Vector(0, 0, 20)))
-        util.Effect("VortDispel", effectdata, true, true)
-
-        -- Play sound
-        self:EmitSound(Sound(table.Random(RespawnPoint.TeleportSounds)), 85, 150)
 end
 
 function ENT:Recharge()
@@ -153,43 +142,6 @@ function ENT:Discharge()
     self:UpdateIndicator()
 end
 
--- Restore device health with suit battery by up to 40 points
-function ENT:ConsumeBattery(bat)
-    local max_HP = RespawnPoint.MaxHP
-
-    self.HP = self.HP + math.min(max_HP - self.HP, 40)
-    self:EmitSound(Sound("items/battery_pickup.wav"), 75, 125)
-
-    bat:Remove()
-end
-
-function ENT:Spark()
-    -- Add spark effect
-    local effectdata = EffectData()
-    effectdata:SetOrigin(self:GetPos())
-    effectdata:SetMagnitude(4)
-    effectdata:SetRadius(2)
-    util.Effect("ElectricSpark", effectdata)
-
-    -- Play sound
-    self:EmitSound(Sound(table.Random(RespawnPoint.SparkSounds)), 75, 150)
-end
-
-function ENT:Explode()
-    -- Add spark effect
-    local effectdata = EffectData()
-    effectdata:SetOrigin(self:GetPos())
-    effectdata:SetMagnitude(6)
-    effectdata:SetRadius(4)
-    effectdata:SetScale(2)
-    util.Effect("ElectricSpark", effectdata)
-
-    -- Play sound
-    self:EmitSound(Sound(table.Random(RespawnPoint.ExplodeSounds)), 75, 150)
-
-    self:Remove()
-end
-
 function ENT:AssignPlayer(ply)
     -- Don't overwrite assigned player
     if IsValid(self.AssignedPlayer) then return end
@@ -204,8 +156,8 @@ function ENT:AssignPlayer(ply)
 
     self:EmitSound(Sound("buttons/combine_button5.wav"), 65, 100, 0.75)
 
+    self:Discharge()
     self:UpdateLabel()
-    self:UpdateIndicator()
 end
 
 function ENT:UnassignPlayer()
@@ -218,8 +170,8 @@ function ENT:UnassignPlayer()
 
     self:EmitSound(Sound("buttons/combine_button7.wav"), 65, 100, 0.75)
 
-    self:UpdateLabel()
     self:UpdateIndicator()
+    self:UpdateLabel()
 end
 
 function ENT:UpdateLabel()
@@ -230,7 +182,7 @@ function ENT:UpdateLabel()
         name = ply:Nick()
     end
 
-    self:SetOverlayText("Respawn Point\nPlayer: " .. name)
+    self:SetOverlayText("Respawn Point\n" .. name)
 end
 
 function ENT:UpdateIndicator()

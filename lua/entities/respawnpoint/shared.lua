@@ -2,12 +2,12 @@
 ENT.Base = "base_gmodentity"
 ENT.Type = "anim"
 ENT.Category        = "Respawn Point"
-ENT.Spawnable       = true
 ENT.PrintName       = "Respawn Point"
-ENT.Author          = "Mailz"
-ENT.Contact         = "Steam"
+ENT.Author          = "Major Tom"
 ENT.Purpose         = "Allow players set their custom spawn points"
 ENT.Instructions    = "Spawn and press 'E' to register your spawnpoint. After respawning device will be deactivated for 60s. Avoid device damage."
+ENT.Spawnable       = true
+ENT.PhysicsSounds   = true
 
 --[[    Shared values (all in one place)   ]]
 RespawnPoint = RespawnPoint or {}
@@ -51,4 +51,3 @@ RespawnPoint.IndicatorColor = {}
 RespawnPoint.IndicatorColor[RespawnPoint.UNASSIGNED] = Color(127, 127, 127, 127)
 RespawnPoint.IndicatorColor[RespawnPoint.DISCHARGED] = Color(255, 192, 0, 127)
 RespawnPoint.IndicatorColor[RespawnPoint.CHARGED] = Color(0, 63, 255, 127)
-
